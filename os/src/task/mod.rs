@@ -45,6 +45,8 @@ pub struct TaskManagerInner {
     tasks: [TaskControlBlock; MAX_APP_NUM],
     /// id of current `Running` task
     current_task: usize,
+    /// every task's syscall times,use array instead of hashmap,key is task id adn value is syscall times
+    call_times: [[usize; 1024];MAX_APP_NUM],
 }
 
 lazy_static! {
@@ -65,6 +67,7 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
+                    call_times: [[0; 1024];MAX_APP_NUM],
                 })
             },
         }
@@ -135,6 +138,24 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+    /// get current task id
+    fn get_current_task_id(&self) -> Option<usize> {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        return Some(current);
+    }
+    /// add syscall times
+    fn add_current_task_syscall_times(&self,syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.call_times.get_mut(current).unwrap().get_mut(syscall_id).map(|x| *x+=1);
+    }
+    /// get current task syscall times
+    fn get_current_task_syscall_times(&self) -> [usize; 1024] {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        return *inner.call_times.get(current).unwrap();
+    }
 }
 
 /// Run the first task in task list.
@@ -168,4 +189,16 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+/// Get current task's task control block.
+pub fn get_current_task_id() -> Option<usize> {
+    TASK_MANAGER.get_current_task_id()
+}
+/// Add current task syscall times
+pub fn add_current_task_syscall_times(syscall_id: usize) {
+    TASK_MANAGER.add_current_task_syscall_times(syscall_id);
+}
+/// Get current task syscall times
+pub fn get_current_task_syscall_times() -> [usize; 1024] {
+    TASK_MANAGER.get_current_task_syscall_times()
 }
