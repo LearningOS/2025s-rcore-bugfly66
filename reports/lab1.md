@@ -1,15 +1,14 @@
-- 总结你实现的功能
 通过给TaskMagagerInner增加一个call_times字段，来统计每个任务的系统调用被调用的次数。增加两个方法一个在syscall中使用来记录系统调用次数，另一个在sys_trace中获取当前任务的syscall的次数。两外两种功能分别用core::ptr::read_volatile() 和core::ptr::write_volatile()实现读和写如内存特定地址。
 - 问答题
 1. RustSBI version 0.3.0-alpha.4, adapting to RISC-V SBI v1.0.0
 第一个程序页错误，第二个和第三个程序是违法指令
 2. 
-    1. 
-    2. 
-    3. 
-    4. 
-    5. 
-    6. 
+    1. 刚进入 __restore 时，sp 代表了内核栈的地址，也就是内核栈的栈顶。一是启动运行app，再就是trap后将寄存器内容恢复到用户栈
+    2. 分别是t0对应sstatus内容为用户态信息、t1对应sepc保存了返回到用户态后应该执行的指令地址、t2对应用户栈的sp地址
+    3. 跳过x2是因为需要先释放掉内核栈上的trapcontext，然后再恢复sp，跳过tp是因为用不到恢复不恢复都一样
+    4. sp指向用户栈，sscratch指向内核栈
+    5. sret  sret执行时根据sstatus中的spp位进行跳转，跳转到用户态（已经在trap_handler中设置为用户态）
+    6. sp指向内核栈，sscratch指向用户栈
     7. ecall
 
 
