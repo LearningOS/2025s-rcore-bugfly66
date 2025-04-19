@@ -44,6 +44,8 @@ pub fn enable_timer_interrupt() {
 }
 
 /// trap handler
+/// 相当于把app的上下文保存到cx中，然后根据trap cause进行不同的处理，处理过程中会修改cx，然后处理完成后返回cx，然后恢复cx到寄存器中，
+/// app就可以获得系统调用的结果？好像不对？
 #[no_mangle]
 pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
     let scause = scause::read(); // get trap cause
