@@ -263,9 +263,13 @@ impl MemorySet {
         }
     }
     /// get page table
-     pub fn map_va_pa(&mut self,vpn: VirtPageNum,ppn:PhysPageNum,flags:PTEFlags) {
+    pub fn map_va_pa(&mut self,vpn: VirtPageNum,ppn:PhysPageNum,flags:PTEFlags) {
          self.page_table.map(vpn, ppn, flags);
-     }
+    }
+    /// unmap 
+    pub fn unmap_va_pa(&mut self,vpn: VirtPageNum) {
+         self.page_table.unmap(vpn);
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

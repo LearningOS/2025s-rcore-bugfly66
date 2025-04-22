@@ -14,8 +14,11 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::MemorySet;
+use crate::mm::{PTEFlags, PhysPageNum, VirtPageNum};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
@@ -118,14 +121,33 @@ impl TaskManager {
         let inner = self.inner.exclusive_access();
         inner.tasks[inner.current_task].get_user_token()
     }
+    /// get_current_memory_set
+    fn get_current_memory_set(&self) -> Arc<UPSafeCell<MemorySet>> {
+        let inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        Arc::clone(&inner.tasks[cur].memory_set)
+    }
     /// Get the current task
-    fn get_current_task(&self) -> &mut TaskControlBlock {
-        let mut inner = self.inner.exclusive_access();
-        &mut inner.tasks[inner.current_task]
+    fn set_current_page_table(&self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
+        let inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur]
+            .memory_set
+            .exclusive_access()
+            .map_va_pa(vpn, ppn, flags);
+    }
+    ///unmap_va_pa
+    fn unmap_current_page_table(&self, vpn: VirtPageNum) {
+        let inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur]
+            .memory_set
+            .exclusive_access()
+            .unmap_va_pa(vpn);
     }
 
     /// Get the current 'Running' task's trap contexts.
-    fn get_current_trap_cx(&self) -> &'static mut TrapContext {
+    fn get_current_trap_cx(&self) -> &mut TrapContext {
         let inner = self.inner.exclusive_access();
         inner.tasks[inner.current_task].get_trap_cx()
     }
@@ -197,8 +219,16 @@ pub fn current_user_token() -> usize {
     TASK_MANAGER.get_current_token()
 }
 /// Get the current 'Running' task.
-pub fn current_task() -> &'static mut TaskControlBlock {
-    TASK_MANAGER.get_current_task()
+pub fn current_memory_set() -> Arc<UPSafeCell<MemorySet>> {
+    TASK_MANAGER.get_current_memory_set()
+}
+/// Set the current 'Running' task's page table
+pub fn set_current_page_table(vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
+    TASK_MANAGER.set_current_page_table(vpn, ppn, flags)
+}
+/// unmap_va_pa
+pub fn unmap_current_page_table(vpn: VirtPageNum) {
+    TASK_MANAGER.unmap_current_page_table(vpn)
 }
 /// Get the current 'Running' task's trap contexts.
 pub fn current_trap_cx() -> &'static mut TrapContext {

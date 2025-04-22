@@ -1,5 +1,7 @@
 //! Types related to task management
 use super::TaskContext;
+use crate::task::UPSafeCell;
+use alloc::sync::Arc;
 use crate::config::TRAP_CONTEXT_BASE;
 use crate::mm::{
     kernel_stack_position, MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE,
@@ -15,7 +17,7 @@ pub struct TaskControlBlock {
     pub task_status: TaskStatus,
 
     /// Application address space
-    pub memory_set: MemorySet,
+    pub memory_set: Arc<UPSafeCell<MemorySet>>,
 
     /// The phys page number of trap context
     pub trap_cx_ppn: PhysPageNum,
@@ -37,7 +39,7 @@ impl TaskControlBlock {
     }
     /// get the user token
     pub fn get_user_token(&self) -> usize {
-        self.memory_set.token()
+        self.memory_set.exclusive_access().token()
     }
     /// Based on the elf info in program, build the contents of task in a new address space
     pub fn new(elf_data: &[u8], app_id: usize) -> Self {
@@ -55,15 +57,15 @@ impl TaskControlBlock {
             kernel_stack_top.into(),
             MapPermission::R | MapPermission::W,
         );
-        let task_control_block = Self {
+        let task_control_block =unsafe{ Self {
             task_status,
             task_cx: TaskContext::goto_trap_return(kernel_stack_top),
-            memory_set,
+            memory_set: Arc::new(UPSafeCell::new(memory_set)),
             trap_cx_ppn,
             base_size: user_sp,
             heap_bottom: user_sp,
             program_brk: user_sp,
-        };
+        }};
         // prepare TrapContext in user space
         let trap_cx = task_control_block.get_trap_cx();
         *trap_cx = TrapContext::app_init_context(
@@ -84,10 +86,10 @@ impl TaskControlBlock {
         }
         let result = if size < 0 {
             self.memory_set
-                .shrink_to(VirtAddr(self.heap_bottom), VirtAddr(new_brk as usize))
+                .exclusive_access().shrink_to(VirtAddr(self.heap_bottom), VirtAddr(new_brk as usize))
         } else {
             self.memory_set
-                .append_to(VirtAddr(self.heap_bottom), VirtAddr(new_brk as usize))
+                .exclusive_access().append_to(VirtAddr(self.heap_bottom), VirtAddr(new_brk as usize))
         };
         if result {
             self.program_brk = new_brk as usize;
