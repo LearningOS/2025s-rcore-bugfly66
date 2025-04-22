@@ -262,6 +262,10 @@ impl MemorySet {
             false
         }
     }
+    /// get page table
+     pub fn map_va_pa(&mut self,vpn: VirtPageNum,ppn:PhysPageNum,flags:PTEFlags) {
+         self.page_table.map(vpn, ppn, flags);
+     }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

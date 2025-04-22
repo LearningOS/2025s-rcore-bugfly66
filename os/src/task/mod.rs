@@ -13,7 +13,6 @@ mod context;
 mod switch;
 #[allow(clippy::module_inception)]
 mod task;
-
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
@@ -119,6 +118,11 @@ impl TaskManager {
         let inner = self.inner.exclusive_access();
         inner.tasks[inner.current_task].get_user_token()
     }
+    /// Get the current task
+    fn get_current_task(&self) -> &mut TaskControlBlock {
+        let mut inner = self.inner.exclusive_access();
+        &mut inner.tasks[inner.current_task]
+    }
 
     /// Get the current 'Running' task's trap contexts.
     fn get_current_trap_cx(&self) -> &'static mut TrapContext {
@@ -192,7 +196,10 @@ pub fn exit_current_and_run_next() {
 pub fn current_user_token() -> usize {
     TASK_MANAGER.get_current_token()
 }
-
+/// Get the current 'Running' task.
+pub fn current_task() -> &'static mut TaskControlBlock {
+    TASK_MANAGER.get_current_task()
+}
 /// Get the current 'Running' task's trap contexts.
 pub fn current_trap_cx() -> &'static mut TrapContext {
     TASK_MANAGER.get_current_trap_cx()
