@@ -42,14 +42,33 @@ pub fn sys_yield() -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+    trace!("kernel: sys_get_time");
+    let us = get_time_us();
+    unsafe {
+        *ts = TimeVal {
+            sec: us / 1_000_000,
+            usec: us % 1_000_000,
+        };
+    }
+    0
 }
 
 /// TODO: Finish sys_trace to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
     trace!("kernel: sys_trace");
-    -1
+    let id_addr = id as *mut u8;
+    if trace_request == 0 {
+        let res: isize = unsafe { core::ptr::read_volatile(id as *const u8) as isize };
+        return res;
+    } else if trace_request == 1 {
+        unsafe {
+            core::ptr::write_volatile(id_addr, data as u8);
+        };
+        return 0;
+    } else {
+        return get_current_task_syscall_times()[id] as isize;
+    }
 }
 
 // YOUR JOB: Implement mmap.
