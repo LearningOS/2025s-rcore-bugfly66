@@ -48,6 +48,8 @@ struct TaskManagerInner {
     tasks: Vec<TaskControlBlock>,
     /// id of current `Running` task
     current_task: usize,
+    /// call times
+    call_times: [[usize; 1024]; 1024],
 }
 
 lazy_static! {
@@ -66,6 +68,7 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
+                    call_times: [[0; 1024]; 1024],
                 })
             },
         }
@@ -158,6 +161,18 @@ impl TaskManager {
         let cur = inner.current_task;
         inner.tasks[cur].change_program_brk(size)
     }
+    /// add current task syscall times
+    fn add_current_task_syscall_times(&self,syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.call_times.get_mut(current).unwrap().get_mut(syscall_id).map(|x| *x+=1);
+    }
+    /// get current task syscall times
+    fn get_current_task_syscall_times(&self) -> [usize; 1024] {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        return *inner.call_times.get(current).unwrap();
+    }
 
     /// Switch current `Running` task to the task we have found,
     /// or there is no `Ready` task and we can exit with all applications completed
@@ -238,4 +253,12 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+/// add current task syscall times
+pub fn add_current_task_syscall_times(syscall_id: usize) {
+    TASK_MANAGER.add_current_task_syscall_times(syscall_id)
+}
+/// get current task syscall times
+pub fn get_current_task_syscall_times() -> [usize; 1024] {
+    TASK_MANAGER.get_current_task_syscall_times()
 }
