@@ -1,11 +1,13 @@
 //! Process management syscalls
 
+// use crate::mm::PageTable;
 use crate::mm::VirtAddr;
 
 use crate::config::PAGE_SIZE;
 use crate::mm::PTEFlags;
 use crate::mm::VirtPageNum;
 use crate::task::current_memory_set;
+// use crate::task::current_user_token;
 use crate::timer::get_time_us;
 use crate::task::get_current_task_syscall_times;
 // use crate::mm::VirtPageNum;
@@ -46,22 +48,26 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
     trace!("kernel: sys_get_time");
     let us = get_time_us();
-    let pte = current_memory_set().exclusive_access().translate(VirtPageNum::from(ts as usize));
+    let pte = current_memory_set()
+        .exclusive_access()
+        .translate(VirtPageNum::from(VirtAddr::from((ts as usize)&(!0<<12 as usize) as usize)));
     match pte {
-        Some(x)=>{
+        Some(x) => {
             let mut pa = x.ppn().0 as *mut TimeVal;
-            pa = pa.wrapping_add(ts as usize - ts as usize % 4096);
+            pa = ((pa as usize)<<12).wrapping_add((ts as usize) &0xfff) as *mut TimeVal;
             unsafe {
                 *pa = TimeVal {
                     sec: us / 1_000_000,
                     usec: us % 1_000_000,
                 };
             }
-        },
-        None=>{
+        }
+        None => {
             sys_mmap(ts as usize, 4096, 3);
-            let _pte2 = current_memory_set().exclusive_access().translate(VirtPageNum::from(ts as usize));
-   
+            let _pte2 = current_memory_set()
+                .exclusive_access()
+                .translate(VirtPageNum::from(ts as usize));
+
             // let mut pa = pte2.unwrap().ppn().0 as *mut TimeVal;
             // pa = pa.wrapping_add(ts as usize - ts as usize % 4096);
             // unsafe {
@@ -79,25 +85,51 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 /// TODO: Finish sys_trace to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
-    trace!("kernel: sys_trace");
+    println!("kernel: sys_trace=====================");
     // let id_addr = id as *mut u8;
     if trace_request == 0 {
-        // let pte = current_memory_set().exclusive_access().translate(VirtPageNum::from(id as usize)).unwrap();
-        // if pte.readable() == false {
-        //     return -1;
-        // }
-        // let pa = (pte.ppn().0 as *mut u8).wrapping_add(id&0xfff);
-        // println!("0id:{:#x?},pa:{:#x?}", id, pa);
-        // let res: isize = unsafe { core::ptr::read_volatile(pa.as_ref().unwrap() as *const u8) as isize };
-        // println!("0res:{:#x?}",res);
-        // return res;
-    } else if trace_request == 1 {
-        let pte = current_memory_set().exclusive_access().translate(VirtPageNum::from(id as usize)).unwrap();
-        if pte.writable() == false {
+        // let page_table = PageTable::from_token(current_user_token());
+        // let ppn = page_table.translate(VirtPageNum::from(id));
+        // println!("{:?}",ppn);
+        println!("111id:{:#x?}",id);
+        let vpn = VirtPageNum::from(VirtAddr::from((id)&(!0<<12 as usize) as usize));
+        println!("222id:{:#x?}",vpn.0);
+        let pte = if let Some(x) = current_memory_set()
+            .exclusive_access()
+            .translate(vpn)
+        {
+            println!("sys_trace: id_addr is readable");
+            x
+        } else {
+            println!("sys_trace: id_addr is not readable");
+            return -1;
+        };
+        if pte.readable() == false ||pte.flags().bits()>>4&1 == 0 {
             return -1;
         }
-        
-        let pa = (pte.ppn().0 as *mut u8).wrapping_add(id&0xfff);
+        let pa = ((pte.ppn().0<<12) as *mut u8).wrapping_add(id & 0xfff);
+        println!("0id:{:#x?},pa:{:#x?}", id, pa);
+        let res: isize =
+            unsafe { core::ptr::read_volatile(pa.as_ref().unwrap() as *const u8) as isize };
+        println!("0res:{:#x?}", res);
+        return res;
+    } else if trace_request == 1 {
+        let vpn = VirtPageNum::from(VirtAddr::from((id)&(!0<<12 as usize) as usize));
+        let pte = if let Some(x) = current_memory_set()
+            .exclusive_access()
+            .translate(vpn)
+        {
+            println!("sys_trace: id_addr is readable");
+            x
+        } else {
+            println!("sys_trace: id_addr is not readable");
+            return -1;
+        };
+        if pte.writable() == false  ||pte.flags().bits()>>4&1 == 0 {
+            return -1;
+        }
+
+        let pa = ((pte.ppn().0<<12) as *mut u8).wrapping_add(id&0xfff);
         println!("1id:{:#x?},pa:{:#x?}", id, pa);
         unsafe {
             core::ptr::write_volatile(pa, data as u8);
@@ -108,7 +140,7 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
         println!("2id:{:#x?}", id);
         return get_current_task_syscall_times()[id] as isize;
     }
-    return 0;
+    // return 0;
 }
 
 // YOUR JOB: Implement mmap.
@@ -141,11 +173,13 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
             Some(ft) => {
                 println!("{:#x?}", _start + i * PAGE_SIZE);
 
-                let vpn = VirtPageNum::from(VirtAddr::from(_start + i * PAGE_SIZE));
+                let vpn = VirtPageNum::from(VirtAddr::from((_start + i * PAGE_SIZE)&(!(0<<12 as usize)) as usize));
+                // let vpn2 = VirtPageNum::from((_start + i * PAGE_SIZE)&(!((0<<12)as usize)) as usize);
+                // println!("#######vpn1:{:#x?},2:{:#x?}",vpn2.0,(_start + i * PAGE_SIZE)&(!((0<<12)as usize)));
                 let ppn = current_memory_set().exclusive_access().translate(vpn);
                 if let Some(x) = ppn {
                     if x.ppn().0 != 0 {
-                        println!("already exist:{:#x?},ppn:{:#x?}", vpn.0, x.ppn().0);
+                        // println!("already exist:{:#x?},ppn:{:#x?}", vpn.0, x.ppn().0);
                         return -1;
                     }
                 }
