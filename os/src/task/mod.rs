@@ -13,6 +13,7 @@ mod context;
 mod switch;
 #[allow(clippy::module_inception)]
 mod task;
+use crate::config::MAX_SYSCALL_NUM;
 use crate::loader::{get_app_data, get_num_app};
 use crate::mm::MemorySet;
 use crate::mm::{PTEFlags, PhysPageNum, VirtPageNum};
@@ -49,7 +50,7 @@ struct TaskManagerInner {
     /// id of current `Running` task
     current_task: usize,
     /// call times
-    call_times: [[usize; 1024]; 1024],
+    call_times: [[usize; MAX_SYSCALL_NUM]; 1024],
 }
 
 lazy_static! {
@@ -68,7 +69,7 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
-                    call_times: [[0; 1024]; 1024],
+                    call_times: [[0; MAX_SYSCALL_NUM]; 1024],
                 })
             },
         }
