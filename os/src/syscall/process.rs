@@ -46,7 +46,6 @@ pub fn sys_yield() -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    trace!("kernel: sys_get_time");
     let us = get_time_us();
     let pte = current_memory_set()
         .exclusive_access()
@@ -63,55 +62,42 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
             }
         }
         None => {
-            sys_mmap(ts as usize, 4096, 3);
-            let _pte2 = current_memory_set()
-                .exclusive_access()
-                .translate(VirtPageNum::from(ts as usize));
-
-            // let mut pa = pte2.unwrap().ppn().0 as *mut TimeVal;
-            // pa = pa.wrapping_add(ts as usize - ts as usize % 4096);
-            // unsafe {
-            //     *pa = TimeVal {
-            //         sec: us / 1_000_000,
-            //         usec: us % 1_000_000,
-            //     };
-            // }
+            // sys_mmap(ts as usize, 4096, 3);
+            // let _pte2 = current_memory_set()
+            //     .exclusive_access()
+            //     .translate(VirtPageNum::from(ts as usize));
+            panic!("TimeVal's address is not readable or writable");
         }
     }
-
     0
 }
 
 /// TODO: Finish sys_trace to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
-    println!("kernel: sys_trace=====================");
-    // let id_addr = id as *mut u8;
+    trace!("kernel: sys_trace=====================");
     if trace_request == 0 {
-        // let page_table = PageTable::from_token(current_user_token());
-        // let ppn = page_table.translate(VirtPageNum::from(id));
-        // println!("{:?}",ppn);
-        println!("111id:{:#x?}",id);
+        // println!("111id:{:#x?}",id);
         let vpn = VirtPageNum::from(VirtAddr::from((id)&(!0<<12 as usize) as usize));
-        println!("222id:{:#x?}",vpn.0);
+        // println!("222id:{:#x?}",vpn.0);
         let pte = if let Some(x) = current_memory_set()
             .exclusive_access()
             .translate(vpn)
         {
-            println!("sys_trace: id_addr is readable");
+            // println!("sys_trace: id_addr is readable");
             x
         } else {
-            println!("sys_trace: id_addr is not readable");
+            // println!("sys_trace: id_addr is not readable");
             return -1;
         };
         if pte.readable() == false ||pte.flags().bits()>>4&1 == 0 {
             return -1;
         }
         let pa = ((pte.ppn().0<<12) as *mut u8).wrapping_add(id & 0xfff);
-        println!("0id:{:#x?},pa:{:#x?}", id, pa);
+        // println!("0id:{:#x?},pa:{:#x?}", id, pa);
         let res: isize =
             unsafe { core::ptr::read_volatile(pa.as_ref().unwrap() as *const u8) as isize };
-        println!("0res:{:#x?}", res);
+        // println!("0res:{:#x?}", res);
         return res;
     } else if trace_request == 1 {
         let vpn = VirtPageNum::from(VirtAddr::from((id)&(!0<<12 as usize) as usize));
@@ -119,10 +105,10 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
             .exclusive_access()
             .translate(vpn)
         {
-            println!("sys_trace: id_addr is readable");
+            // println!("sys_trace: id_addr is readable");
             x
         } else {
-            println!("sys_trace: id_addr is not readable");
+            // println!("sys_trace: id_addr is not readable");
             return -1;
         };
         if pte.writable() == false  ||pte.flags().bits()>>4&1 == 0 {
@@ -130,17 +116,16 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
         }
 
         let pa = ((pte.ppn().0<<12) as *mut u8).wrapping_add(id&0xfff);
-        println!("1id:{:#x?},pa:{:#x?}", id, pa);
+        // println!("1id:{:#x?},pa:{:#x?}", id, pa);
         unsafe {
             core::ptr::write_volatile(pa, data as u8);
         };
-        println!("data:{:#x?}", data);
+        // println!("data:{:#x?}", data);
         return 0;
     } else {
-        println!("2id:{:#x?}", id);
+        // println!("2id:{:#x?}", id);
         return get_current_task_syscall_times()[id] as isize;
     }
-    // return 0;
 }
 
 // YOUR JOB: Implement mmap.
@@ -174,7 +159,6 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
                 println!("{:#x?}", _start + i * PAGE_SIZE);
 
                 let vpn = VirtPageNum::from(VirtAddr::from((_start + i * PAGE_SIZE)&(!(0<<12 as usize)) as usize));
-                // let vpn2 = VirtPageNum::from((_start + i * PAGE_SIZE)&(!((0<<12)as usize)) as usize);
                 // println!("#######vpn1:{:#x?},2:{:#x?}",vpn2.0,(_start + i * PAGE_SIZE)&(!((0<<12)as usize)));
                 let ppn = current_memory_set().exclusive_access().translate(vpn);
                 if let Some(x) = ppn {
@@ -185,8 +169,8 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
                 }
 
                 set_current_page_table(vpn, ft.ppn, flags);
-                let ppn = current_memory_set().exclusive_access().translate(vpn);
-                println!("not exist:{:#x?},ppn:{:#x?}", vpn.0, ppn.unwrap().ppn().0);
+                // let ppn = current_memory_set().exclusive_access().translate(vpn);
+                // println!("not exist:{:#x?},ppn:{:#x?}", vpn.0, ppn.unwrap().ppn().0);
             }
             None => {
                 return -1;
@@ -200,12 +184,10 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     // trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    // let mut page_table = PageTable::new();
     if _start & 0xfff != 0 {
         return -1;
     }
     for i in 0..((_len + PAGE_SIZE - 1) / PAGE_SIZE) {
-        // let mem = current_memory_set();
         let vpn = VirtPageNum::from(VirtAddr::from(_start + i * PAGE_SIZE));
         let pte = current_memory_set()
             .exclusive_access()
