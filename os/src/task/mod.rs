@@ -169,7 +169,7 @@ impl TaskManager {
         inner.call_times.get_mut(current).unwrap().get_mut(syscall_id).map(|x| *x+=1);
     }
     /// get current task syscall times
-    fn get_current_task_syscall_times(&self) -> [usize; 1024] {
+    fn get_current_task_syscall_times(&self) -> [usize; MAX_SYSCALL_NUM] {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
         return *inner.call_times.get(current).unwrap();
@@ -260,6 +260,6 @@ pub fn add_current_task_syscall_times(syscall_id: usize) {
     TASK_MANAGER.add_current_task_syscall_times(syscall_id)
 }
 /// get current task syscall times
-pub fn get_current_task_syscall_times() -> [usize; 1024] {
+pub fn get_current_task_syscall_times() -> [usize; MAX_SYSCALL_NUM] {
     TASK_MANAGER.get_current_task_syscall_times()
 }
