@@ -138,6 +138,7 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
         return -1;
     }
     // println!("_start&0xfff{}",_start&0xfff);
+    // start 按页大小对齐
     if _start & 0xfff != 0 {
         return -1;
     }
@@ -184,11 +185,12 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     // trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
+    //
     if _start & 0xfff != 0 {
         return -1;
     }
     for i in 0..((_len + PAGE_SIZE - 1) / PAGE_SIZE) {
-        let vpn = VirtPageNum::from(VirtAddr::from(_start + i * PAGE_SIZE));
+        let vpn = VirtPageNum::from(VirtAddr::from((_start + i * PAGE_SIZE)&(!(0<<12 as usize)) as usize));
         let pte = current_memory_set()
             .exclusive_access()
             .translate(vpn)
