@@ -121,8 +121,8 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     );
     trace!("kernel: sys_get_time");
     let us = get_time_us();
-    let mem_set = current_task().unwrap().inner_exclusive_access().memory_set;
-    let pte = mem_set
+    // let mem_set = &current_task().unwrap().inner_exclusive_access().memory_set;
+    let pte = current_task().unwrap().inner_exclusive_access().memory_set
         .translate(VirtPageNum::from(VirtAddr::from(
             (ts as usize) & (!0 << 12 as usize) as usize,
         )));
@@ -182,8 +182,8 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
 
                 let vpn = VirtPageNum::from(VirtAddr::from((_start + i * PAGE_SIZE)&(!(0<<12 as usize)) as usize));
                 // println!("#######vpn1:{:#x?},2:{:#x?}",vpn2.0,(_start + i * PAGE_SIZE)&(!((0<<12)as usize)));
-                let mem_set = current_task().unwrap().inner_exclusive_access().memory_set;
-                let ppn = mem_set.translate(vpn);
+                // let  mem_set = &mut current_task().unwrap().inner_exclusive_access().memory_set;
+                let ppn = current_task().unwrap().inner_exclusive_access().memory_set.translate(vpn);
                 if let Some(x) = ppn {
                     if x.ppn().0 != 0 {
                         // println!("already exist:{:#x?},ppn:{:#x?}", vpn.0, x.ppn().0);
@@ -191,7 +191,7 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
                     }
                 }
 
-               mem_set.(vpn, ft.ppn, flags);
+               current_task().unwrap().inner_exclusive_access().memory_set.map_va_pa(vpn, ft.ppn, flags);
                 // let ppn = current_memory_set().exclusive_access().translate(vpn);
                 // println!("not exist:{:#x?},ppn:{:#x?}", vpn.0, ppn.unwrap().ppn().0);
             }
@@ -213,11 +213,11 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     }
     for i in 0..((_len + PAGE_SIZE - 1) / PAGE_SIZE) {
         let vpn = VirtPageNum::from(VirtAddr::from((_start + i * PAGE_SIZE)&(!(0<<12 as usize)) as usize));
-        let mem_set = current_task().unwrap().inner_exclusive_access().memory_set;
-        let pte = mem_set.translate(vpn)
+        // let  mem_set = &mut current_task().unwrap().inner_exclusive_access().memory_set;
+        let pte = current_task().unwrap().inner_exclusive_access().memory_set.translate(vpn)
             .unwrap();
         if pte.is_valid() && pte.ppn().0 != 0 {
-            mem_set(vpn);
+            current_task().unwrap().inner_exclusive_access().memory_set.unmap_va_pa(vpn);
         } else {
             return -1;
         }
