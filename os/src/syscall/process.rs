@@ -4,7 +4,7 @@ use crate::mm::frame_alloc;
 use crate::mm::VirtAddr;
 use crate::mm::VirtPageNum;
 use crate::timer::get_time_us;
-
+use crate::mm::PTEFlags;
 use crate::{
     loader::get_app_data_by_name,
     mm::{translated_refmut, translated_str},
