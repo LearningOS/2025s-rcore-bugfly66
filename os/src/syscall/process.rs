@@ -1,7 +1,10 @@
 //! Process management syscalls
+use crate::config::PAGE_SIZE;
+use crate::mm::frame_alloc;
 use crate::mm::VirtAddr;
 use crate::mm::VirtPageNum;
 use crate::timer::get_time_us;
+
 use crate::{
     loader::get_app_data_by_name,
     mm::{translated_refmut, translated_str},
@@ -118,10 +121,8 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     );
     trace!("kernel: sys_get_time");
     let us = get_time_us();
-    let pte = current_task()
-        .unwrap()
-        .inner_exclusive_access()
-        .memory_set
+    let mem_set = current_task().unwrap().inner_exclusive_access().memory_set;
+    let pte = mem_set
         .translate(VirtPageNum::from(VirtAddr::from(
             (ts as usize) & (!0 << 12 as usize) as usize,
         )));
@@ -147,22 +148,82 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 
-/// YOUR JOB: Implement mmap.
+// YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    // trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
+    if _port & !0x7 != 0 {
+        return -1;
+    }
+    if _port & 0x7 == 0 {
+        return -1;
+    }
+    // println!("_start&0xfff{}",_start&0xfff);
+    // start 按页大小对齐
+    if _start & 0xfff != 0 {
+        return -1;
+    }
+
+    let mut flags = PTEFlags::empty();
+    
+    flags.set(PTEFlags::R, if _port & 1 == 1 { true } else { false });
+    flags.set(PTEFlags::W, if _port >> 1 & 1 == 1 { true } else { false });
+    flags.set(PTEFlags::X, if _port >> 2 & 1 == 1 { true } else { false });
+    flags.set(PTEFlags::V, true);
+    flags.set(PTEFlags::U, true);
+    flags.set(PTEFlags::A, true);
+    flags.set(PTEFlags::D, true);
+    flags.set(PTEFlags::G, true);
+    // let res = 0;
+    for i in 0..((_len + PAGE_SIZE - 1) / PAGE_SIZE) {
+        let pa = frame_alloc();
+        match pa {
+            Some(ft) => {
+                println!("{:#x?}", _start + i * PAGE_SIZE);
+
+                let vpn = VirtPageNum::from(VirtAddr::from((_start + i * PAGE_SIZE)&(!(0<<12 as usize)) as usize));
+                // println!("#######vpn1:{:#x?},2:{:#x?}",vpn2.0,(_start + i * PAGE_SIZE)&(!((0<<12)as usize)));
+                let mem_set = current_task().unwrap().inner_exclusive_access().memory_set;
+                let ppn = mem_set.translate(vpn);
+                if let Some(x) = ppn {
+                    if x.ppn().0 != 0 {
+                        // println!("already exist:{:#x?},ppn:{:#x?}", vpn.0, x.ppn().0);
+                        return -1;
+                    }
+                }
+
+                set_current_page_table(vpn, ft.ppn, flags);
+                // let ppn = current_memory_set().exclusive_access().translate(vpn);
+                // println!("not exist:{:#x?},ppn:{:#x?}", vpn.0, ppn.unwrap().ppn().0);
+            }
+            None => {
+                return -1;
+            }
+        }
+    }
+
+    return 0;
 }
 
-/// YOUR JOB: Implement munmap.
+// YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    // trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
+    //
+    if _start & 0xfff != 0 {
+        return -1;
+    }
+    for i in 0..((_len + PAGE_SIZE - 1) / PAGE_SIZE) {
+        let vpn = VirtPageNum::from(VirtAddr::from((_start + i * PAGE_SIZE)&(!(0<<12 as usize)) as usize));
+        let mem_set = current_task().unwrap().inner_exclusive_access().memory_set;
+        let pte = mem_set.translate(vpn)
+            .unwrap();
+        if pte.is_valid() && pte.ppn().0 != 0 {
+            mem_set(vpn);
+        } else {
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 /// change data segment size
