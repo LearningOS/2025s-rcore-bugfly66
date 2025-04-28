@@ -191,7 +191,7 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
                     }
                 }
 
-                set_current_page_table(vpn, ft.ppn, flags);
+               mem_set.(vpn, ft.ppn, flags);
                 // let ppn = current_memory_set().exclusive_access().translate(vpn);
                 // println!("not exist:{:#x?},ppn:{:#x?}", vpn.0, ppn.unwrap().ppn().0);
             }
