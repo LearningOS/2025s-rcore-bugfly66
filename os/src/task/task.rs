@@ -68,6 +68,10 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+    /// stride
+    pub stride: usize,
+    /// pass
+    pub pass: usize,
 }
 
 impl TaskControlBlockInner {
@@ -118,6 +122,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    stride: 0,
+                    pass: 16,
                 })
             },
         };
@@ -132,6 +138,7 @@ impl TaskControlBlock {
         );
         task_control_block
     }
+
 
     /// Load a new elf to replace the original application address space and start execution
     pub fn exec(&self, elf_data: &[u8]) {
@@ -191,6 +198,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    stride: parent_inner.stride,
+                    pass: parent_inner.pass,
                 })
             },
         });

@@ -1,10 +1,12 @@
 //! Process management syscalls
+use crate::task::TaskControlBlock;
+
 use crate::config::PAGE_SIZE;
 use crate::mm::frame_alloc;
+use crate::mm::PTEFlags;
 use crate::mm::VirtAddr;
 use crate::mm::VirtPageNum;
 use crate::timer::get_time_us;
-use crate::mm::PTEFlags;
 use crate::{
     loader::get_app_data_by_name,
     mm::{translated_refmut, translated_str},
@@ -122,7 +124,10 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
     let us = get_time_us();
     // let mem_set = &current_task().unwrap().inner_exclusive_access().memory_set;
-    let pte = current_task().unwrap().inner_exclusive_access().memory_set
+    let pte = current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .memory_set
         .translate(VirtPageNum::from(VirtAddr::from(
             (ts as usize) & (!0 << 12 as usize) as usize,
         )));
@@ -157,14 +162,14 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     if _port & 0x7 == 0 {
         return -1;
     }
-    // println!("_start&0xfff{}",_start&0xfff);
+    println!("_start&0xfff{}", _start & 0xfff);
     // start 按页大小对齐
     if _start & 0xfff != 0 {
         return -1;
     }
 
     let mut flags = PTEFlags::empty();
-    
+
     flags.set(PTEFlags::R, if _port & 1 == 1 { true } else { false });
     flags.set(PTEFlags::W, if _port >> 1 & 1 == 1 { true } else { false });
     flags.set(PTEFlags::X, if _port >> 2 & 1 == 1 { true } else { false });
@@ -180,10 +185,16 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
             Some(ft) => {
                 println!("{:#x?}", _start + i * PAGE_SIZE);
 
-                let vpn = VirtPageNum::from(VirtAddr::from((_start + i * PAGE_SIZE)&(!(0<<12 as usize)) as usize));
+                let vpn = VirtPageNum::from(VirtAddr::from(
+                    (_start + i * PAGE_SIZE) & (!(0 << 12 as usize)) as usize,
+                ));
                 // println!("#######vpn1:{:#x?},2:{:#x?}",vpn2.0,(_start + i * PAGE_SIZE)&(!((0<<12)as usize)));
                 // let  mem_set = &mut current_task().unwrap().inner_exclusive_access().memory_set;
-                let ppn = current_task().unwrap().inner_exclusive_access().memory_set.translate(vpn);
+                let ppn = current_task()
+                    .unwrap()
+                    .inner_exclusive_access()
+                    .memory_set
+                    .translate(vpn);
                 if let Some(x) = ppn {
                     if x.ppn().0 != 0 {
                         // println!("already exist:{:#x?},ppn:{:#x?}", vpn.0, x.ppn().0);
@@ -191,7 +202,11 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
                     }
                 }
 
-               current_task().unwrap().inner_exclusive_access().memory_set.map_va_pa(vpn, ft.ppn, flags);
+                current_task()
+                    .unwrap()
+                    .inner_exclusive_access()
+                    .memory_set
+                    .map_va_pa(vpn, ft.ppn, flags);
                 // let ppn = current_memory_set().exclusive_access().translate(vpn);
                 // println!("not exist:{:#x?},ppn:{:#x?}", vpn.0, ppn.unwrap().ppn().0);
             }
@@ -212,12 +227,22 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         return -1;
     }
     for i in 0..((_len + PAGE_SIZE - 1) / PAGE_SIZE) {
-        let vpn = VirtPageNum::from(VirtAddr::from((_start + i * PAGE_SIZE)&(!(0<<12 as usize)) as usize));
+        let vpn = VirtPageNum::from(VirtAddr::from(
+            (_start + i * PAGE_SIZE) & (!(0 << 12 as usize)) as usize,
+        ));
         // let  mem_set = &mut current_task().unwrap().inner_exclusive_access().memory_set;
-        let pte = current_task().unwrap().inner_exclusive_access().memory_set.translate(vpn)
+        let pte = current_task()
+            .unwrap()
+            .inner_exclusive_access()
+            .memory_set
+            .translate(vpn)
             .unwrap();
         if pte.is_valid() && pte.ppn().0 != 0 {
-            current_task().unwrap().inner_exclusive_access().memory_set.unmap_va_pa(vpn);
+            current_task()
+                .unwrap()
+                .inner_exclusive_access()
+                .memory_set
+                .unmap_va_pa(vpn);
         } else {
             return -1;
         }
@@ -238,18 +263,25 @@ pub fn sys_sbrk(size: i32) -> isize {
 
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
-pub fn sys_spawn(_path: *const u8) -> isize {
+pub fn sys_spawn(path: *const u8) -> isize {
     trace!(
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    let res = sys_fork();
-    if res == -1 {
-        return -1;
-    } else {
-        sys_exec(_path);
-    }
-    res
+    let token = current_user_token();
+    let path = translated_str(token, path);
+    let elf_data = get_app_data_by_name(path.as_str()).unwrap();
+    let new_task = TaskControlBlock::new(elf_data);
+    let new_task = Arc::new(new_task);
+    new_task.inner_exclusive_access().parent = Some(Arc::downgrade(&current_task().unwrap()));
+    current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .children
+        .push(new_task.clone());
+    let pid = new_task.pid.0;
+    add_task(new_task);
+    pid  as isize
 }
 
 // YOUR JOB: Set task priority.
@@ -258,5 +290,9 @@ pub fn sys_set_priority(_prio: isize) -> isize {
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _prio <= 1{
+        return -1;
+    }
+    current_task().unwrap().inner_exclusive_access().pass = 99999/_prio as usize;
+    _prio
 }
